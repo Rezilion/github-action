@@ -15,9 +15,13 @@ runs:
   steps:
     - if: ${{ (inputs.mode == 'start') || (inputs.mode == 'validate') }}
       run: |
-        REZILION_EXECUTABLE_URL="https://validate-ci-instrument.s3.eu-west-1.amazonaws.com/validate_ci_agent_v2.4.2"
+        REZILION_EXECUTABLE_URL="https://validate-ci-instrument.s3.eu-west-1.amazonaws.com/validate_ci_agent_v2.5.0"
         REZILION_OUTPUTS_FOLDER=/tmp/rezilion/outputs
         REZILION_AGENT_PATH=/tmp/rezilion/validate_ci_agent
+        
+        if command -v apk > /dev/null 2>&1 ; then
+          REZILION_EXECUTABLE_URL="https://validate-ci-instrument.s3.eu-west-1.amazonaws.com/validate_ci_alpine_agent_v2.5.0"
+        fi
   
         mkdir -p $REZILION_OUTPUTS_FOLDER
   
@@ -31,6 +35,10 @@ runs:
           # install curl with yum
           elif command -v yum > /dev/null 2>&1 ; then
             yum install curl -y
+          
+          # install curl with apk
+          elif command -v apk > /dev/null 2>&1 ; then
+            apk add curl
   
           else
             echo "Impossible to install Rezilion without curl"
@@ -48,7 +56,7 @@ runs:
         REZILION_OUTPUTS_FOLDER=/tmp/rezilion/outputs
         REZILION_AGENT_PATH=/tmp/rezilion/validate_ci_agent
         
-        BASE64_IMAGE=$(echo -n "${{ inputs.image_name }}" | base64)
+        BASE64_IMAGE="$(echo -n "${{ inputs.image_name }}" | base64)"
         REZILION_JOB_FOLDER=$REZILION_OUTPUTS_FOLDER/$BASE64_IMAGE/$GITHUB_JOB
         mkdir -p "$REZILION_JOB_FOLDER"
         
@@ -69,24 +77,23 @@ runs:
         ${{ inputs.command }}
         REZILIONEOFTOKEN
         
-        chmod +x $USER_COMMAND_PATH
-        
-        echo "$REZILION_USER_COMMAND"
+        chmod +x $USER_COMMAND_PATH        
+        cat "$USER_COMMAND_PATH"
         
         $REZILION_AGENT_PATH --license-key "$REZILION_LICENSE_KEY" --ci-environment github miners --db-path "$REZILION_JOB_FOLDER/db" --ld-preload-output-directory "$REZILION_LDPRELOAD_OUTPUT_DIRECTORY" --miners-status-file "$MINERS_STATUS_FILE_PATH" --stop-dynamic-mining-flag-path $STOP_MINING_FLAG_FILE_PATH --shell-command-to-mine $USER_COMMAND_PATH --shell-command-output-file-path /tmp/rezilion/shell_command_output --shell-command-exit-code-file-path /tmp/rezilion/shell_command_exit_code >> "$REZILION_JOB_FOLDER/miners.log" 2>&1 || REZILION_FAILED_RUNNING=1
         
         if [ -z "$REZILION_FAILED_RUNNING" ]; then
           cat /tmp/rezilion/shell_command_output
-          echo "Command Exit Code: $(</tmp/rezilion/shell_command_exit_code)"
+          echo Command Exit Code: "$(cat </tmp/rezilion/shell_command_exit_code)"
         
-          if [[ $(< /tmp/rezilion/shell_command_exit_code) != "0" ]]; then
+          if [ "$(cat </tmp/rezilion/shell_command_exit_code)" != "0" ]; then
             echo "Command failed"
             exit 1
           fi
         
         else
           echo "Failed running Rezilion, running user command..."
-          sh -c "$REZILION_USER_COMMAND"
+          sh -c "$USER_COMMAND_PATH"
         fi
 
       shell: sh
@@ -128,7 +135,7 @@ runs:
         
           done
 
-      shell: sh
+      shell: bash
 
     - if: ${{ inputs.mode == 'validate' }}
       name: Upload output file
@@ -172,4 +179,4 @@ runs:
             $REZILION_AGENT_PATH --license-key "$REZILION_LICENSE_KEY" --ci-environment gitlab gates --severity-gate $REZILION_SEVERITY_GATE --json-report-path $ARTIFACT_PATH/report_$NORMALIZED_IMAGE_NAME.json
         
           done
-      shell: sh
+      shell: bash
