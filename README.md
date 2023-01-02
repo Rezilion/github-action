@@ -29,12 +29,13 @@ To use this action, you need a Rezilion license.
 
      b. Add Rezilion as a step for each command in your pipeline
 
-     <img width="405" alt="image" src="https://user-images.githubusercontent.com/94110576/202431010-e1601ede-4c94-4b2d-afb3-3b04f253ce4e.png">
+     ![image](https://user-images.githubusercontent.com/94110576/210215925-e33e1193-fc82-4bc4-be34-32bc90858b3e.png)
 
 4. Add Rezilion as a Job
 
-Make sure to add inside the "needs" field all the Jobs Rezilion Validate is used in
+    ![image](https://user-images.githubusercontent.com/94110576/210216072-aba96482-6943-4d96-be49-454b51b41d43.png)
 
-<img width="368" alt="image (1)" src="https://user-images.githubusercontent.com/94110576/202431283-20d2d9b8-2b40-4674-8564-365565cb6805.png">
+
+    * Make sure to add inside the "needs" field all the Jobs Rezilion Validate is used in
 
 For full user guide, please follow this link:
