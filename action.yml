@@ -7,20 +7,22 @@ inputs:
   image_name:
     description: 'Docker Image to validate'
     required: false
+    default: ""
   command:
     description: 'User command to validate'
     required: false
+    default: ""
 runs:
   using: "composite"
   steps:
     - if: ${{ (inputs.mode == 'start') || (inputs.mode == 'validate') }}
       run: |
-        REZILION_EXECUTABLE_URL="https://validate-ci-instrument.s3.eu-west-1.amazonaws.com/validate_ci_agent_v2.7.0"
+        REZILION_EXECUTABLE_URL="https://validate-ci-instrument.s3.eu-west-1.amazonaws.com/validate_ci_agent_v2.8.0"
         REZILION_OUTPUTS_FOLDER=/tmp/rezilion/outputs
         REZILION_AGENT_PATH=/tmp/rezilion/validate_ci_agent
         
         if [ -f /etc/alpine-release ] ; then
-          REZILION_EXECUTABLE_URL="https://validate-ci-instrument.s3.eu-west-1.amazonaws.com/validate_ci_alpine_agent_v2.7.0"
+          REZILION_EXECUTABLE_URL="https://validate-ci-instrument.s3.eu-west-1.amazonaws.com/validate_ci_alpine_agent_v2.8.0"
         fi
   
         mkdir -p $REZILION_OUTPUTS_FOLDER
@@ -51,18 +53,29 @@ runs:
         chmod +x $REZILION_AGENT_PATH || true
       shell: sh
 
-    - if: ${{ inputs.mode == 'start' }}
+    - if: ${{ (inputs.mode == 'start') }}
       run: |
+        if [ -z ${{ inputs.image_name }} ]; then
+          echo "Missing 'image_name' parameter for rezilion start, not running Rezilion..."
+          exit 1
+        fi
+        
+        if [ -z ${{ inputs.command }} ]; then
+          echo "Missing 'command' parameter for rezilion start, not running Rezilion..."
+          exit 1
+        fi
+        
         REZILION_OUTPUTS_FOLDER=/tmp/rezilion/outputs
         REZILION_AGENT_PATH=/tmp/rezilion/validate_ci_agent
         
-        BASE64_IMAGE="$(echo -n "${{ inputs.image_name }}" | base64)"
+        BASE64_IMAGE="$(echo -n "${{ inputs.image_name }}" | base64 -w 0)"
         REZILION_JOB_FOLDER=$REZILION_OUTPUTS_FOLDER/$BASE64_IMAGE/$GITHUB_JOB
         mkdir -p "$REZILION_JOB_FOLDER"
         
         REZILION_LDPRELOAD_OUTPUT_DIRECTORY=$REZILION_JOB_FOLDER/ldpreload
         MINERS_STATUS_FILE_PATH=$REZILION_JOB_FOLDER/miners_status
         STOP_MINING_FLAG_FILE_PATH=/tmp/rezilion/stop_mining
+        MINERS_LOG_PATH="$REZILION_JOB_FOLDER"/"$(basename -- "${{ inputs.image_name }}" | tr : _)"_miners.log
         USER_COMMAND_PATH=/tmp/rezilion/command.sh
         
         if [ -f $STOP_MINING_FLAG_FILE_PATH ]; then
@@ -80,7 +93,7 @@ runs:
         chmod +x $USER_COMMAND_PATH        
         cat "$USER_COMMAND_PATH"
         
-        $REZILION_AGENT_PATH --license-key "$REZILION_LICENSE_KEY" --ci-environment github miners --db-path "$REZILION_JOB_FOLDER/db" --ld-preload-output-directory "$REZILION_LDPRELOAD_OUTPUT_DIRECTORY" --miners-status-file "$MINERS_STATUS_FILE_PATH" --stop-dynamic-mining-flag-path $STOP_MINING_FLAG_FILE_PATH --shell-command-to-mine $USER_COMMAND_PATH --shell-command-output-file-path /tmp/rezilion/shell_command_output --shell-command-exit-code-file-path /tmp/rezilion/shell_command_exit_code >> "$REZILION_JOB_FOLDER/miners.log" 2>&1 || REZILION_FAILED_RUNNING=1
+        $REZILION_AGENT_PATH --license-key "$REZILION_LICENSE_KEY" --ci-environment github miners --db-path "$REZILION_JOB_FOLDER/db" --ld-preload-output-directory "$REZILION_LDPRELOAD_OUTPUT_DIRECTORY" --miners-status-file "$MINERS_STATUS_FILE_PATH" --stop-dynamic-mining-flag-path $STOP_MINING_FLAG_FILE_PATH --shell-command-to-mine $USER_COMMAND_PATH --shell-command-output-file-path /tmp/rezilion/shell_command_output --shell-command-exit-code-file-path /tmp/rezilion/shell_command_exit_code >> "$MINERS_LOG_PATH" 2>&1 || REZILION_FAILED_RUNNING=1
         
         if [ -z "$REZILION_FAILED_RUNNING" ]; then
           cat /tmp/rezilion/shell_command_output
@@ -117,7 +130,7 @@ runs:
         REZILION_OUTPUTS_FOLDER=/tmp/rezilion/outputs
         REZILION_AGENT_PATH=/tmp/rezilion/validate_ci_agent
         
-        if [[ -z "$(ls -A $REZILION_OUTPUTS_FOLDER)" ]]; then
+        if [ -z "$(ls -A $REZILION_OUTPUTS_FOLDER)" ]; then
           echo "Rezilion found no images to validate..."
           exit 0
         fi
@@ -125,13 +138,15 @@ runs:
         ARTIFACT_PATH=/tmp/rezilion/artifacts
         mkdir -p $ARTIFACT_PATH
         
+        export REZILION_BACKEND_API_GATEWAY_URL="https://api.rezilion.com"
+        
         for dir in "$REZILION_OUTPUTS_FOLDER"/*/
           do
             ENCODED_DIR=$(basename -- "${dir%*/}")
             IMAGE_NAME_DECODED=$(echo -n "$ENCODED_DIR" | base64 --decode)
         
             NORMALIZED_IMAGE_NAME=$(basename -- "$IMAGE_NAME_DECODED" | tr : _)
-            $REZILION_AGENT_PATH --log-path $REZILION_OUTPUTS_FOLDER/$ENCODED_DIR/validate_$NORMALIZED_IMAGE_NAME.log --license-key $REZILION_LICENSE_KEY --ci-environment github validate --tests-directory $REZILION_OUTPUTS_FOLDER/$ENCODED_DIR --html-report-path $ARTIFACT_PATH/report_$NORMALIZED_IMAGE_NAME.html --json-report-path $ARTIFACT_PATH/report_$NORMALIZED_IMAGE_NAME.json --cyclonedx-report-path $ARTIFACT_PATH/cyclonedx_report_$NORMALIZED_IMAGE_NAME.json --container-image-name $IMAGE_NAME_DECODED --scanner-name trivy || true
+            $REZILION_AGENT_PATH --log-path "$REZILION_OUTPUTS_FOLDER/$ENCODED_DIR/$NORMALIZED_IMAGE_NAME"_validate.log --license-key $REZILION_LICENSE_KEY --ci-environment github validate --tests-directory $REZILION_OUTPUTS_FOLDER/$ENCODED_DIR --html-report-path $ARTIFACT_PATH/report_$NORMALIZED_IMAGE_NAME.html --json-report-path $ARTIFACT_PATH/report_$NORMALIZED_IMAGE_NAME.json --cyclonedx-report-path $ARTIFACT_PATH/cyclonedx_report_$NORMALIZED_IMAGE_NAME.json --container-image-name $IMAGE_NAME_DECODED --scanner-name Rezilion || true
         
           done
 
@@ -141,20 +156,20 @@ runs:
       name: Upload output file
       uses: actions/upload-artifact@v3
       with:
-        name: Rezilion Reports
-        path: /tmp/rezilion/artifacts
+        name: Rezilion Test Artifacts
+        path: /tmp/rezilion/outputs
 
     - if: ${{ inputs.mode == 'validate' }}
       name: Upload output file
       uses: actions/upload-artifact@v3
       with:
-        name: Rezilion Test Artifacts
-        path: /tmp/rezilion/outputs
+        name: Rezilion Reports
+        path: /tmp/rezilion/artifacts
 
     - if: ${{ inputs.mode == 'validate' }}
       name: Rezilion Gates
       run: |
-        if [[ ! -n "$REZILION_SEVERITY_GATE" ]]; then
+        if [ ! -n "$REZILION_SEVERITY_GATE" ]; then
           echo "No gates found, skipping..."
           exit 0
         fi
@@ -162,7 +177,7 @@ runs:
         REZILION_OUTPUTS_FOLDER=/tmp/rezilion/outputs
         REZILION_AGENT_PATH=/tmp/rezilion/validate_ci_agent
         
-        if [[ -z "$(ls -A $REZILION_OUTPUTS_FOLDER)" ]]; then
+        if [ -z "$(ls -A $REZILION_OUTPUTS_FOLDER)" ]; then
           echo "Rezilion found no images to validate..."
           exit 0
         fi
