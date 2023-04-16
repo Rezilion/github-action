@@ -15,14 +15,14 @@ inputs:
 runs:
   using: "composite"
   steps:
-    - if: ${{ (inputs.mode == 'start') || (inputs.mode == 'validate') }}
+    - if: ${{ (inputs.mode == 'start') || (inputs.mode == 'validate') || (inputs.mode == 'sca') }}
       run: |
-        REZILION_EXECUTABLE_URL="https://validate-ci-instrument.s3.eu-west-1.amazonaws.com/2.9.0/validate_ci_agent"
+        REZILION_EXECUTABLE_URL="https://validate-ci-instrument.s3.eu-west-1.amazonaws.com/2.10.0/validate_ci_agent"
         REZILION_OUTPUTS_FOLDER=/tmp/rezilion/outputs
         REZILION_AGENT_PATH=/tmp/rezilion/validate_ci_agent
         
         if [ -f /etc/alpine-release ] ; then
-          REZILION_EXECUTABLE_URL="https://validate-ci-instrument.s3.eu-west-1.amazonaws.com/2.9.0/validate_ci_alpine_agent"
+          REZILION_EXECUTABLE_URL="https://validate-ci-instrument.s3.eu-west-1.amazonaws.com/2.10.0/validate_ci_alpine_agent"
         fi
   
         mkdir -p $REZILION_OUTPUTS_FOLDER
@@ -60,11 +60,6 @@ runs:
           exit 1
         fi
         
-        if [ -z ${{ inputs.command }} ]; then
-          echo "Missing 'command' parameter for rezilion start, not running Rezilion..."
-          exit 1
-        fi
-        
         REZILION_OUTPUTS_FOLDER=/tmp/rezilion/outputs
         REZILION_AGENT_PATH=/tmp/rezilion/validate_ci_agent
         
@@ -90,6 +85,11 @@ runs:
         ${{ inputs.command }}
         REZILIONEOFTOKEN
         
+        if [ ! -s $USER_COMMAND_PATH ]; then
+          echo "Missing 'command' parameter for rezilion start, not running Rezilion..."
+          exit 1
+        fi
+        
         chmod +x $USER_COMMAND_PATH        
         cat "$USER_COMMAND_PATH"
         
@@ -111,6 +111,29 @@ runs:
 
       shell: sh
 
+    - if: ${{ (inputs.mode == 'sca') }}
+      run: |
+        REZILION_OUTPUTS_FOLDER=/tmp/rezilion/outputs
+        REZILION_AGENT_PATH=/tmp/rezilion/validate_ci_agent
+
+        BASE64_IMAGE="$(echo -n "${{ inputs.image_name }}" | base64 -w 0)"
+        REZILION_JOB_FOLDER=$REZILION_OUTPUTS_FOLDER/$BASE64_IMAGE/$GITHUB_JOB
+        mkdir -p "$REZILION_JOB_FOLDER"
+
+        REZILION_LDPRELOAD_OUTPUT_DIRECTORY=$REZILION_JOB_FOLDER/ldpreload
+        MINERS_STATUS_FILE_PATH=$REZILION_JOB_FOLDER/miners_status
+        STOP_MINING_FLAG_FILE_PATH=/tmp/rezilion/stop_mining
+        MINERS_LOG_PATH="$REZILION_JOB_FOLDER"/"$(basename -- "${{ inputs.image_name }}" | tr : _)"_miners.log
+        USER_COMMAND_PATH=/tmp/rezilion/command.sh
+
+        if [ -f $STOP_MINING_FLAG_FILE_PATH ]; then
+          rm $STOP_MINING_FLAG_FILE_PATH
+        fi
+        
+        $REZILION_AGENT_PATH --license-key "$REZILION_LICENSE_KEY" --ci-environment github miners --db-path "$REZILION_JOB_FOLDER/db" --ld-preload-output-directory "$REZILION_LDPRELOAD_OUTPUT_DIRECTORY" --miners-status-file "$MINERS_STATUS_FILE_PATH" --stop-dynamic-mining-flag-path $STOP_MINING_FLAG_FILE_PATH --sca-mode >> "$MINERS_LOG_PATH" 2>&1
+
+      shell: sh
+
     - if: ${{ inputs.mode == 'start' }}
       name: Upload output file
       uses: actions/upload-artifact@v3
@@ -125,7 +148,7 @@ runs:
         name: Rezilion Test Artifacts
         path: /tmp/rezilion/outputs
 
-    - if: ${{ inputs.mode == 'validate' }}
+    - if: ${{ (inputs.mode == 'validate') || (inputs.mode == 'sca')}}
       run: |
         REZILION_OUTPUTS_FOLDER=/tmp/rezilion/outputs
         REZILION_AGENT_PATH=/tmp/rezilion/validate_ci_agent
@@ -144,23 +167,23 @@ runs:
         for dir in "$REZILION_OUTPUTS_FOLDER"/*/
           do
             ENCODED_DIR=$(basename -- "${dir%*/}")
-            IMAGE_NAME_DECODED=$(echo -n "$ENCODED_DIR" | base64 --decode)
+            IMAGE_NAME_DECODED=$(echo -n "$ENCODED_DIR" | base64 -d)
         
             NORMALIZED_IMAGE_NAME=$(basename -- "$IMAGE_NAME_DECODED" | tr : _)
             $REZILION_AGENT_PATH --log-path "$REZILION_OUTPUTS_FOLDER/$ENCODED_DIR/$NORMALIZED_IMAGE_NAME"_validate.log --license-key $REZILION_LICENSE_KEY --ci-environment github validate --tests-directory $REZILION_OUTPUTS_FOLDER/$ENCODED_DIR --html-report-path $ARTIFACT_PATH/report_$NORMALIZED_IMAGE_NAME.html --json-report-path $ARTIFACT_PATH/report_$NORMALIZED_IMAGE_NAME.json --cyclonedx-report-path $ARTIFACT_PATH/cyclonedx_report_$NORMALIZED_IMAGE_NAME.json --container-image-name $IMAGE_NAME_DECODED --scanner-name Rezilion || true
         
           done
 
-      shell: bash
+      shell: sh
 
-    - if: ${{ inputs.mode == 'validate' }}
+    - if: ${{ (inputs.mode == 'validate') || (inputs.mode == 'sca') }}
       name: Upload output file
       uses: actions/upload-artifact@v3
       with:
         name: Rezilion Test Artifacts
         path: /tmp/rezilion/outputs
 
-    - if: ${{ inputs.mode == 'validate' }}
+    - if: ${{ (inputs.mode == 'validate') || (inputs.mode == 'sca') }}
       name: Upload output file
       uses: actions/upload-artifact@v3
       with:
@@ -189,10 +212,10 @@ runs:
         for dir in "$REZILION_OUTPUTS_FOLDER"/*/
           do
             ENCODED_DIR=$(basename -- "${dir%*/}")
-            IMAGE_NAME_DECODED=$(echo -n "$ENCODED_DIR" | base64 --decode)
+            IMAGE_NAME_DECODED=$(echo -n "$ENCODED_DIR" | base64 -d)
         
             NORMALIZED_IMAGE_NAME=$(basename -- "$IMAGE_NAME_DECODED" | tr : _)
             $REZILION_AGENT_PATH --license-key "$REZILION_LICENSE_KEY" --ci-environment gitlab gates --severity-gate $REZILION_SEVERITY_GATE --json-report-path $ARTIFACT_PATH/report_$NORMALIZED_IMAGE_NAME.json
         
           done
-      shell: bash
+      shell: sh
