@@ -21,12 +21,12 @@ runs:
 
     - if: ${{ (inputs.mode == 'start') || (inputs.mode == 'validate') || (inputs.mode == 'sca') }}
       run: |
-        REZILION_EXECUTABLE_URL="https://validate-ci-instrument.s3.eu-west-1.amazonaws.com/2.11.2/validate_ci_agent"
+        REZILION_EXECUTABLE_URL="https://validate-ci-instrument.s3.eu-west-1.amazonaws.com/2.11.3/validate_ci_agent"
         REZILION_OUTPUTS_FOLDER=/tmp/rezilion/outputs
         REZILION_AGENT_PATH=/tmp/rezilion/validate_ci_agent
         
         if [ -f /etc/alpine-release ] ; then
-          REZILION_EXECUTABLE_URL="https://validate-ci-instrument.s3.eu-west-1.amazonaws.com/2.11.2/validate_ci_alpine_agent"
+          REZILION_EXECUTABLE_URL="https://validate-ci-instrument.s3.eu-west-1.amazonaws.com/2.11.3/validate_ci_alpine_agent"
         fi
   
         mkdir -p $REZILION_OUTPUTS_FOLDER
@@ -78,7 +78,7 @@ runs:
         ${{ inputs.command }}
         REZILIONEOFTOKEN
         
-        if [ "" == "$(cat $USER_COMMAND_PATH)" ]; then
+        if [ $(wc -c <"$USER_COMMAND_PATH") -eq 1 ]; then
           echo "Missing 'command' parameter for rezilion start, not running Rezilion..."
           exit 1
         fi
