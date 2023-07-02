@@ -8,6 +8,10 @@ inputs:
     description: 'User command to validate'
     required: false
     default: ""
+  image_name:
+    description: 'Image name to validate'
+    required: false
+    default: ""
 runs:
   using: "composite"
   steps:
@@ -21,12 +25,12 @@ runs:
 
     - if: ${{ (inputs.mode == 'start') || (inputs.mode == 'validate') || (inputs.mode == 'sca') }}
       run: |
-        REZILION_EXECUTABLE_URL="https://validate-ci-instrument.s3.eu-west-1.amazonaws.com/2.12.0/validate_ci_agent"
+        REZILION_EXECUTABLE_URL="https://validate-ci-instrument.s3.eu-west-1.amazonaws.com/2.12.1/validate_ci_agent"
         REZILION_OUTPUTS_FOLDER=/tmp/rezilion/outputs
         REZILION_AGENT_PATH=/tmp/rezilion/validate_ci_agent
         
         if [ -f /etc/alpine-release ] ; then
-          REZILION_EXECUTABLE_URL="https://validate-ci-instrument.s3.eu-west-1.amazonaws.com/2.12.0/validate_ci_alpine_agent"
+          REZILION_EXECUTABLE_URL="https://validate-ci-instrument.s3.eu-west-1.amazonaws.com/2.12.1/validate_ci_alpine_agent"
         fi
   
         mkdir -p $REZILION_OUTPUTS_FOLDER
@@ -86,7 +90,11 @@ runs:
         chmod +x $USER_COMMAND_PATH        
         cat "$USER_COMMAND_PATH"
         
-        $REZILION_AGENT_PATH --license-key "$REZILION_LICENSE_KEY" --ci-environment github miners --current-job-name $GITHUB_JOB --miners-directory $REZILION_OUTPUTS_FOLDER --stop-dynamic-mining-flag-path $STOP_MINING_FLAG_FILE_PATH --shell-command-to-mine $USER_COMMAND_PATH --shell-command-output-file-path /tmp/rezilion/shell_command_output --shell-command-exit-code-file-path /tmp/rezilion/shell_command_exit_code >> "$MINERS_LOG_PATH" 2>&1 || REZILION_FAILED_RUNNING=1
+        RUN_REZILION_CMDLINE="$REZILION_AGENT_PATH --license-key "$REZILION_LICENSE_KEY" --ci-environment github miners --current-job-name $GITHUB_JOB --miners-directory $REZILION_OUTPUTS_FOLDER --stop-dynamic-mining-flag-path $STOP_MINING_FLAG_FILE_PATH --shell-command-to-mine $USER_COMMAND_PATH --shell-command-output-file-path /tmp/rezilion/shell_command_output --shell-command-exit-code-file-path /tmp/rezilion/shell_command_exit_code"
+        if [ ! -z "${{ inputs.image_name }}" ]; then
+          RUN_REZILION_CMDLINE="$RUN_REZILION_CMDLINE --container-image-name "${{ inputs.image_name }}""
+        fi
+        $RUN_REZILION_CMDLINE >> "$MINERS_LOG_PATH" 2>&1 || REZILION_FAILED_RUNNING=1
         
         if [ -z "$REZILION_FAILED_RUNNING" ]; then
           cat /tmp/rezilion/shell_command_output
@@ -116,7 +124,12 @@ runs:
           rm $STOP_MINING_FLAG_FILE_PATH
         fi
                 
-        $REZILION_AGENT_PATH --license-key "$REZILION_LICENSE_KEY" --ci-environment github miners --sca-mode --current-job-name $GITHUB_JOB --miners-directory $REZILION_OUTPUTS_FOLDER --stop-dynamic-mining-flag-path $STOP_MINING_FLAG_FILE_PATH >> "$MINERS_LOG_PATH" 2>&1 || true
+        RUN_REZILION_CMDLINE="$REZILION_AGENT_PATH --license-key "$REZILION_LICENSE_KEY" --ci-environment github miners --sca-mode --current-job-name $GITHUB_JOB --miners-directory $REZILION_OUTPUTS_FOLDER --stop-dynamic-mining-flag-path $STOP_MINING_FLAG_FILE_PATH"
+        if [ ! -z "${{ inputs.image_name }}" ]; then
+          RUN_REZILION_CMDLINE="$RUN_REZILION_CMDLINE --container-image-name "${{ inputs.image_name }}""
+        fi
+        
+        $RUN_REZILION_CMDLINE >> "$MINERS_LOG_PATH" 2>&1 || true
 
       shell: sh
 
