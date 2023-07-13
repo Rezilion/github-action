@@ -25,12 +25,12 @@ runs:
 
     - if: ${{ (inputs.mode == 'start') || (inputs.mode == 'validate') || (inputs.mode == 'sca') }}
       run: |
-        REZILION_EXECUTABLE_URL="https://validate-ci-instrument.s3.eu-west-1.amazonaws.com/2.12.1/validate_ci_agent"
+        REZILION_EXECUTABLE_URL="https://validate-ci-instrument.s3.eu-west-1.amazonaws.com/2.13.0/validate_ci_agent"
         REZILION_OUTPUTS_FOLDER=/tmp/rezilion/outputs
         REZILION_AGENT_PATH=/tmp/rezilion/validate_ci_agent
         
         if [ -f /etc/alpine-release ] ; then
-          REZILION_EXECUTABLE_URL="https://validate-ci-instrument.s3.eu-west-1.amazonaws.com/2.12.1/validate_ci_alpine_agent"
+          REZILION_EXECUTABLE_URL="https://validate-ci-instrument.s3.eu-west-1.amazonaws.com/2.13.0/validate_ci_alpine_agent"
         fi
   
         mkdir -p $REZILION_OUTPUTS_FOLDER
@@ -106,7 +106,8 @@ runs:
           fi
         
         else
-          echo "Failed running Rezilion, running user command..."
+          echo "Failed running Rezilion"
+          cat "$MINERS_LOG_PATH"
           sh -c "$USER_COMMAND_PATH"
         fi
 
@@ -129,11 +130,11 @@ runs:
           RUN_REZILION_CMDLINE="$RUN_REZILION_CMDLINE --container-image-name "${{ inputs.image_name }}""
         fi
         
-        $RUN_REZILION_CMDLINE >> "$MINERS_LOG_PATH" 2>&1 || true
+        $RUN_REZILION_CMDLINE >> "$MINERS_LOG_PATH" 2>&1 || cat "$MINERS_LOG_PATH" 
 
       shell: sh
 
-    - if: ${{ inputs.mode == 'start' }}
+    - if: ${{ (inputs.mode == 'start') || (inputs.mode == 'sca') }}
       name: Upload output file
       uses: actions/upload-artifact@v3
       with:
@@ -147,7 +148,7 @@ runs:
         name: Rezilion Test Artifacts
         path: /tmp/rezilion/outputs
 
-    - if: ${{ (inputs.mode == 'validate') || (inputs.mode == 'sca')}}
+    - if: ${{ (inputs.mode == 'validate')}}
       run: |
         REZILION_OUTPUTS_FOLDER=/tmp/rezilion/outputs
         REZILION_AGENT_PATH=/tmp/rezilion/validate_ci_agent
@@ -167,14 +168,14 @@ runs:
         
       shell: sh
 
-    - if: ${{ always() && (inputs.mode == 'validate') || (inputs.mode == 'sca') }}
+    - if: ${{ always() && (inputs.mode == 'validate')}}
       name: Upload output file
       uses: actions/upload-artifact@v3
       with:
         name: Rezilion Test Artifacts
         path: /tmp/rezilion/outputs
 
-    - if: ${{ always() && (inputs.mode == 'validate') || (inputs.mode == 'sca') }}
+    - if: ${{ always() && (inputs.mode == 'validate')}}
       name: Upload output file
       uses: actions/upload-artifact@v3
       with:
