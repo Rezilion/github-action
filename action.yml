@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Rezilion Validate V2.14.0
+# Rezilion Validate V2.14.1
 name: 'Rezilion'
 description: 'Rezilion for github'
 inputs:
@@ -40,18 +40,18 @@ runs:
 
     - if: ${{ (inputs.mode == 'start') || (inputs.mode == 'validate') || (inputs.mode == 'sca') }}
       run: |
-        REZILION_EXECUTABLE_URL="https://rezilion-ci-us-storage.s3.amazonaws.com/instrument/2.14.0/validate_ci_agent"
+        REZILION_EXECUTABLE_URL="https://rezilion-ci-us-storage.s3.amazonaws.com/instrument/2.14.1/validate_ci_agent"
         REZILION_OUTPUTS_FOLDER=/tmp/rezilion/outputs
         REZILION_AGENT_PATH=/tmp/rezilion/validate_ci_agent
         
         if [ -f /etc/alpine-release ] ; then
-          REZILION_EXECUTABLE_URL="https://rezilion-ci-us-storage.s3.amazonaws.com/instrument/2.14.0/validate_ci_alpine_agent"
+          REZILION_EXECUTABLE_URL="https://rezilion-ci-us-storage.s3.amazonaws.com/instrument/2.14.1/validate_ci_alpine_agent"
         fi
   
         mkdir -p $REZILION_OUTPUTS_FOLDER
   
         # curl isn't installed
-        if ! command -v curl > /dev/null 2>&1 ; then
+        if ! command -v curl > /dev/null 2>&1 && ! command -v wget > /dev/null 2>&1 ; then
           # install curl with apt-get
           if command -v apt-get > /dev/null 2>&1 ; then
             apt-get update
@@ -71,7 +71,14 @@ runs:
           fi
         fi
   
-        curl -s $REZILION_EXECUTABLE_URL --output $REZILION_AGENT_PATH
+        if command -v curl > /dev/null 2>&1 ; then
+          curl -s $REZILION_EXECUTABLE_URL --output $REZILION_AGENT_PATH
+        elif command -v wget > /dev/null 2>&1 ; then
+          wget -q $REZILION_EXECUTABLE_URL -O $REZILION_AGENT_PATH
+        else
+          echo "Impossible to install Rezilion without curl or wget. Please install it and try again."
+          exit 1
+        fi
   
         chmod +x $REZILION_AGENT_PATH || true
       shell: sh
@@ -82,7 +89,8 @@ runs:
         REZILION_AGENT_PATH=/tmp/rezilion/validate_ci_agent
         
         STOP_MINING_FLAG_FILE_PATH=/tmp/rezilion/stop_mining
-        MINERS_LOG_PATH="$REZILION_OUTPUTS_FOLDER"/"$GITHUB_JOB"_miners.log
+        MINERS_LOG_PATH="$REZILION_OUTPUTS_FOLDER"/"$GITHUB_JOB"/"$GITHUB_JOB"_miners.log
+        AGENT_STDOUT_OUTPUT_PATH="/tmp/rezilion_agent.logs"
         USER_COMMAND_PATH=/tmp/rezilion/command.sh
         
         if [ -f $STOP_MINING_FLAG_FILE_PATH ]; then
@@ -105,11 +113,11 @@ runs:
         chmod +x $USER_COMMAND_PATH        
         cat "$USER_COMMAND_PATH"
         
-        RUN_REZILION_CMDLINE="$REZILION_AGENT_PATH --license-key "$REZILION_LICENSE_KEY" --ci-environment github miners --current-job-name $GITHUB_JOB --miners-directory $REZILION_OUTPUTS_FOLDER --stop-dynamic-mining-flag-path $STOP_MINING_FLAG_FILE_PATH --shell-command-to-mine $USER_COMMAND_PATH --shell-command-output-file-path /tmp/rezilion/shell_command_output --shell-command-exit-code-file-path /tmp/rezilion/shell_command_exit_code"
+        RUN_REZILION_CMDLINE="$REZILION_AGENT_PATH --log-path $MINERS_LOG_PATH --license-key "$REZILION_LICENSE_KEY" --ci-environment github miners --current-job-name $GITHUB_JOB --miners-directory $REZILION_OUTPUTS_FOLDER --stop-dynamic-mining-flag-path $STOP_MINING_FLAG_FILE_PATH --shell-command-to-mine $USER_COMMAND_PATH --shell-command-output-file-path /tmp/rezilion/shell_command_output --shell-command-exit-code-file-path /tmp/rezilion/shell_command_exit_code"
         if [ ! -z "${{ inputs.image_name }}" ]; then
           RUN_REZILION_CMDLINE="$RUN_REZILION_CMDLINE --container-image-name "${{ inputs.image_name }}""
         fi
-        $RUN_REZILION_CMDLINE >> "$MINERS_LOG_PATH" 2>&1 || REZILION_FAILED_RUNNING=1
+        $RUN_REZILION_CMDLINE >> "$AGENT_STDOUT_OUTPUT_PATH" 2>&1 || REZILION_FAILED_RUNNING=1
         
         if [ -z "$REZILION_FAILED_RUNNING" ]; then
           cat /tmp/rezilion/shell_command_output
@@ -122,7 +130,7 @@ runs:
         
         else
           echo "Failed running Rezilion"
-          cat "$MINERS_LOG_PATH"
+          cat "$AGENT_STDOUT_OUTPUT_PATH"
           sh -c "$USER_COMMAND_PATH"
         fi
 
@@ -134,18 +142,19 @@ runs:
         REZILION_AGENT_PATH=/tmp/rezilion/validate_ci_agent
         
         STOP_MINING_FLAG_FILE_PATH=/tmp/rezilion/stop_mining
-        MINERS_LOG_PATH="$REZILION_OUTPUTS_FOLDER"/"$GITHUB_JOB"_miners.log
+        MINERS_LOG_PATH="$REZILION_OUTPUTS_FOLDER"/"$GITHUB_JOB"/"$GITHUB_JOB"_miners.log
+        AGENT_STDOUT_OUTPUT_PATH="/tmp/rezilion_agent.logs"
         
         if [ -f $STOP_MINING_FLAG_FILE_PATH ]; then
           rm $STOP_MINING_FLAG_FILE_PATH
         fi
                 
-        RUN_REZILION_CMDLINE="$REZILION_AGENT_PATH --license-key "$REZILION_LICENSE_KEY" --ci-environment github miners --sca-mode --current-job-name $GITHUB_JOB --miners-directory $REZILION_OUTPUTS_FOLDER --stop-dynamic-mining-flag-path $STOP_MINING_FLAG_FILE_PATH"
+        RUN_REZILION_CMDLINE="$REZILION_AGENT_PATH --log-path $MINERS_LOG_PATH --license-key "$REZILION_LICENSE_KEY" --ci-environment github miners --sca-mode --current-job-name $GITHUB_JOB --miners-directory $REZILION_OUTPUTS_FOLDER --stop-dynamic-mining-flag-path $STOP_MINING_FLAG_FILE_PATH"
         if [ ! -z "${{ inputs.image_name }}" ]; then
           RUN_REZILION_CMDLINE="$RUN_REZILION_CMDLINE --container-image-name "${{ inputs.image_name }}""
         fi
         
-        $RUN_REZILION_CMDLINE >> "$MINERS_LOG_PATH" 2>&1 || cat "$MINERS_LOG_PATH" 
+        $RUN_REZILION_CMDLINE >> "$AGENT_STDOUT_OUTPUT_PATH" 2>&1 || cat "$AGENT_STDOUT_OUTPUT_PATH" 
 
       shell: sh
 
